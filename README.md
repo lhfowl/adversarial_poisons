@@ -1,7 +1,9 @@
 # Adversarial poison generation and evaluation.
 
-This framework implements availability data poisoning through adversarial example generation.
-We use and adapt code from the publicly available [Witches' Brew](https://github.com/JonasGeiping/poisoning-gradient-matching.git) github repository.
+This framework implements availability data poisoning through adversarial example generation. This work is presented [here](https://arxiv.org/abs/2106.10807) in the paper titled "Adversarial Examples Make Strong Poisons", authored by Liam Fowl, Micah Goldblum, Ping-yeh Chiang, Jonas Geiping, Wojtek Czaja, Tom Goldstein.
+
+
+We use and adapt code from the publicly available [Witches' Brew](https://github.com/JonasGeiping/poisoning-gradient-matching.git) (Geiping et al.) github repository.
 
 
 ### Dependencies:
