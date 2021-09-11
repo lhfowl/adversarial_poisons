@@ -53,14 +53,6 @@ def construct_datasets(dataset, data_path, normalize=True):
             data_std = torch.std(cc, dim=1).tolist()
         else:
             data_mean, data_std = imagenet_mean, imagenet_std
-    elif dataset == 'ImageNet_load':
-        trainset = ImageNet_load(root=data_path, split='train', download=False, transform=transforms.ToTensor())
-        if imagenet_mean is None:
-            cc = torch.cat([trainset[i][0].reshape(3, -1) for i in range(len(trainset))], dim=1)
-            data_mean = torch.mean(cc, dim=1).tolist()
-            data_std = torch.std(cc, dim=1).tolist()
-        else:
-            data_mean, data_std = imagenet_mean, imagenet_std
     elif dataset == 'ImageNet1k':
         trainset = ImageNet1k(root=data_path, split='train', download=False, transform=transforms.ToTensor())
         if imagenet_mean is None:
@@ -124,16 +116,6 @@ def construct_datasets(dataset, data_path, normalize=True):
             transforms.ToTensor(),
             transforms.Normalize(data_mean, data_std) if normalize else transforms.Lambda(lambda x : x)])
         validset = ImageNet(root=data_path, split='val', download=False, transform=transform_valid)
-    elif dataset == 'ImageNet_load':
-        # Prepare ImageNet beforehand in a different script!
-        # We are not going to redownload on every instance
-        transform_valid = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(data_mean, data_std) if normalize else transforms.Lambda(lambda x : x)])
-        validset = ImageNet(root='~/data', split='val', download=False, transform=transform_valid)
-
     elif dataset == 'ImageNet1k':
         # Prepare ImageNet beforehand in a different script!
         # We are not going to redownload on every instance
@@ -368,21 +350,6 @@ class ImageNet(torchvision.datasets.ImageNet):
             target = self.target_transform(target)
 
         return target, index
-
-
-class ImageNet_load(torch.utils.data.Dataset):
-    def __init__(self, root, dummy_root='~/data', split='train', download=False, **kwargs):
-        self.baseset = ImageNet(dummy_root, split=split, download=download)
-        self.samples = os.listdir(os.path.join(root, 'data'))
-        self.root = root
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        true_index = int(self.samples[idx].split('.')[0])
-        label, _ = self.baseset.get_target(true_index)
-        return self.transform(Image.open(os.path.join(self.root, 'data', self.samples[idx]))), label, idx
 
 
 class ImageNet1k(ImageNet):

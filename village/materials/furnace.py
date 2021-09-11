@@ -54,6 +54,7 @@ class Furnace():
     """ STATUS METHODS """
 
     def print_status(self):
+        # Add more here if you like :)
         print(
             f'Annealing has begun'
             )
@@ -86,10 +87,7 @@ class Furnace():
         # Train augmentations are handled separately as they possibly have to be backpropagated
         if self.augmentations is not None or self.args.paugment:
             if 'CIFAR' in self.args.dataset:
-                if 'resized' in self.args.dataset or 'load' in self.args.dataset:
-                    params = dict(source_size=224, target_size=224, shift=224 // 4, fliplr=True)
-                else:
-                    params = dict(source_size=32, target_size=32, shift=8, fliplr=True)
+                params = dict(source_size=32, target_size=32, shift=8, fliplr=True)
             elif 'MNIST' in self.args.dataset:
                 params = dict(source_size=28, target_size=28, shift=4, fliplr=True)
             elif 'TinyImageNet' in self.args.dataset:
@@ -112,18 +110,7 @@ class Furnace():
             set_random_seed(int(self.args.poisonkey))
         self.poison_ids = sorted(random.sample(list(range(len(self.trainset))), int(len(self.trainset)*self.args.budget)))
         poisonset = Subset(self.trainset, indices=self.poison_ids)
-        if self.args.recipe == 'dataset_train_loss':
-            targetset = torch.utils.data.Subset(self.trainset, random.sample(list(range(len(self.trainset))),
-                                            int(self.args.target_proportion * len(self.trainset))))
-        elif self.args.recipe == 'dataset_test_loss':
-            self.target_indices = random.sample(range(len(self.validset)), int(len(self.validset)*self.args.target_percent))
-            targetset = torch.utils.data.Subset(self.validset, self.target_indices)
-            unseenset = torch.utils.data.Subset(self.validset, list(set(range(len(self.validset))) - set(self.target_indices)))
-            num_workers = self.get_num_workers()
-        elif self.args.recipe in ['grad_explosion', 'tensorclog', 'targeted', 'untargeted', 'poison-frogs']:
-            targetset = []
-        else:
-            raise NotImplementedError('Unknown annealing dataset recipe')
+        targetset = []
         self.poison_lookup = dict(zip(self.poison_ids, range(len(self.poison_ids))))
         self.poisonset = poisonset
         self.targetset = targetset
@@ -135,33 +122,11 @@ class Furnace():
         self.poison_ids = self.global_poison_ids[0]
         self.completed_flag = 0
         poisonset = Subset(self.trainset, indices=self.poison_ids)
-        if self.args.recipe == 'dataset_train_loss':
-            targetset = self.trainset
-        elif self.args.recipe == 'dataset_test_loss':
-            self.target_indices = random.sample(range(len(self.validset)), int(len(self.validset)*self.args.target_percent))
-            targetset = torch.utils.data.Subset(self.validset, self.target_indices)
-            unseenset = torch.utils.data.Subset(self.validset, list(set(range(len(self.validset))) - set(self.target_indices)))
-            num_workers = self.get_num_workers()
-        elif self.args.recipe in ['grad_explosion', 'poison-frogs', 'targeted', 'untargeted']:
-            targetset = []
-        else:
-            raise NotImplementedError('Unknown annealing dataset recipe')
+        targetset = []
         self.poison_lookup = dict(zip(self.poison_ids, range(len(self.poison_ids))))
         #dict(zip(self.poison_ids, range(poison_num)))
         self.poisonset = poisonset
         self.targetset = targetset
-
-    def batched_construction_reset(self, global_poison_ids, idx):
-        self.global_poison_ids = global_poison_ids
-        self.poison_ids = self.global_poison_ids[idx]
-        poisonset = Subset(self.trainset, indices=self.poison_ids)
-        self.poisonset = poisonset
-        self.poison_lookup = dict(zip(self.poison_ids, range(len(self.poison_ids))))
-        validated_batch_size = max(min(self.args.pbatch, len(self.poisonset)), 1)
-        num_workers = self.get_num_workers()
-        self.poisonloader = torch.utils.data.DataLoader(self.poisonset, batch_size=validated_batch_size,
-                                                shuffle=self.args.pshuffle, drop_last=False, num_workers=num_workers,
-                                                pin_memory=PIN_MEMORY)
 
     def initialize_poison(self, initializer=None):
         """Initialize according to args.init.
@@ -279,16 +244,7 @@ class Furnace():
                 _save_image(target, intended_class, idx, location=os.path.join(path, 'targets', names[intended_class]), train=False)
             print('Target images exported with intended class labels ...')
 
-        elif mode == 'poison_dataset_full':
-            # Save training set
-            names = self.trainset.classes
-            for name in names:
-                os.makedirs(os.path.join(path, 'train', name), exist_ok=True)
-            for input, label, idx in self.trainset:
-                _save_image(input, label, idx, location=os.path.join(path, 'train', names[label]), train=True)
-            print('Poisoned training images exported ...')
-
-        elif mode == 'poison_dataset_batched':
+        elif mode == 'poison_dataset':
             os.makedirs(os.path.join(path, 'data'), exist_ok=True)
             for input, label, idx in self.trainset:
                 lookup = self.poison_lookup.get(idx)
@@ -311,16 +267,11 @@ class Furnace():
             np.save(os.path.join(path, 'poisoned_training_data.npy'), training_data)
             np.save(os.path.join(path, 'poisoned_training_labels.npy'), labels)
 
-        elif mode == 'kettle-export':
-            with open(f'kette_{self.args.dataset}{self.args.model}.pkl', 'wb') as file:
+        elif mode == 'furnace-export':
+            with open(f'furnace_{self.args.dataset}{self.args.model}.pkl', 'wb') as file:
                 pickle.dump([self, poison_delta], file, protocol=pickle.HIGHEST_PROTOCOL)
 
         else:
             raise NotImplementedError()
 
         print('Dataset fully exported.')
-
-    def _partition(self, list_in, n_per_partition):
-        n = math.ceil(len(list_in)/n_per_partition)
-        random.shuffle(list_in)
-        return [list_in[i::n] for i in range(n)]

@@ -19,9 +19,9 @@ class ForgemasterTensorclog(_Forgemaster):
 
     """
 
-    def _define_objective(self, inputs, labels, targets):
+    def _define_objective(self, inputs, labels):
         """Implement the closure here."""
-        def closure(model, criterion, optimizer, target_grad, target_clean_grad):
+        def closure(model, criterion, optimizer):
             """This function will be evaluated on all GPUs."""  # noqa: D401
             outputs = model(inputs)
             if self.args.target_criterion in ['cw', 'carlini-wagner']:

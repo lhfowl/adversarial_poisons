@@ -15,8 +15,7 @@ def options():
     # Central:
     parser.add_argument('--net', default='ResNet18', type=lambda s: [str(item) for item in s.split(',')])
     parser.add_argument('--dataset', default='CIFAR10', type=str, choices=['CIFAR10', 'CIFAR100', 'ImageNet', 'ImageNet1k', 'MNIST', 'TinyImageNet', 'ImageNet_load'])
-    parser.add_argument('--recipe', default='targeted', type=str, choices=['gradient-matching', 'gradient-matching-private',
-                                                                                     'poison-frogs', 'metapoison',  'grad_explosion', 'tensorclog',
+    parser.add_argument('--recipe', default='targeted', type=str, choices=['grad_explosion', 'tensorclog',
                                                                                     'untargeted', 'targeted'])
     parser.add_argument('--threatmodel', default='single-class', type=str, choices=['single-class', 'third-party', 'random-subset'])
 
@@ -28,12 +27,9 @@ def options():
     # Poison properties / controlling the strength of the attack:
     parser.add_argument('--eps', default=8.0, type=float)
     parser.add_argument('--budget', default=1.0, type=float, help='Fraction of training data that is poisoned')
-    parser.add_argument('--target_proportion', default=1.0, type=float, help='Fraction of targetset used for gradient')
-    parser.add_argument('--targets', default=1, type=int, help='Number of targets')
 
     # Files and folders
     parser.add_argument('--name', default='', type=str, help='Name tag for the result table and possibly for export folders.')
-    parser.add_argument('--table_path', default='tables/', type=str)
     parser.add_argument('--poison_path', default='poisons/', type=str)
     parser.add_argument('--data_path', default='~/data', type=str)
     parser.add_argument('--resume', default='', type=str)
@@ -41,15 +37,12 @@ def options():
     ###########################################################################
 
 
-
     # Poison brewing:
     parser.add_argument('--attackoptim', default='PGD', type=str)
     parser.add_argument('--attackiter', default=250, type=int)
     parser.add_argument('--init', default='randn', type=str)  # randn / rand
-    parser.add_argument('--tau', default=0.1, type=float)
+    parser.add_argument('--tau', default=0.05, type=float)
     parser.add_argument('--scheduling', action='store_false', help='Disable step size decay.')
-    parser.add_argument('--skip_brew', action='store_true', help='Disable brewing')
-    parser.add_argument('--target_criterion', default='cross-entropy', type=str, help='Loss criterion for target loss')
     parser.add_argument('--restarts', default=8, type=int, help='How often to restart the attack.')
     parser.add_argument('--poison_partition', default=None, type=int, help='How many poisons to craft at a time')
 
@@ -67,9 +60,6 @@ def options():
     parser.add_argument('--step', action='store_true', help='Optimize the model for one epoch.')
     parser.add_argument('--max_epoch', default=None, type=int, help='Train only up to this epoch before poisoning.')
 
-    # Use only a subset of the dataset:
-    parser.add_argument('--ablation', default=1.0, type=float, help='What percent of data (including poisons) to use for validation')
-    parser.add_argument('--target_percent', default=1.0, type=float, help='What percent of validation set used for crafting dataset poisons')
 
     # Gradient Matching - Specific Options
     parser.add_argument('--loss', default='similarity', type=str)  # similarity is stronger in  difficult situations
@@ -84,15 +74,11 @@ def options():
     parser.add_argument('--nadapt', default=2, type=int, help='Meta unrolling steps')
     parser.add_argument('--clean_grad', action='store_true', help='Compute the first-order poison gradient.')
 
-    # Validation behavior
-    parser.add_argument('--vruns', default=0, type=int, help='How often to re-initialize and check target after retraining')
-    parser.add_argument('--vnet', default=None, type=lambda s: [str(item) for item in s.split(',')], help='Evaluate poison on this victim model. Defaults to --net')
-    parser.add_argument('--retrain_from_init', action='store_true', help='Additionally evaluate by retraining on the same model initialization.')
 
     # Optimization setup
     parser.add_argument('--pretrained', action='store_true', help='Load pretrained models from torchvision, if possible [only valid for ImageNet].')
-    parser.add_argument('--feat_extractor_crafting', action='store_true', help='Load pretrained feat extractor for crafting.')
     parser.add_argument('--optimization', default='conservative', type=str, help='Optimization Strategy')
+
     # Strategy overrides:
     parser.add_argument('--epochs', default=None, type=int)
     parser.add_argument('--noaugment', action='store_true', help='Do not use data augmentation during training.')
@@ -104,10 +90,6 @@ def options():
     parser.add_argument('--lmdb_path', default=None, type=str)
     parser.add_argument('--cache_dataset', action='store_true', help='Cache the entire thing :>')
 
-    # These options allow for testing against the toxicity benchmark found at
-    # https://github.com/aks2203/poisoning-benchmark
-    parser.add_argument('--benchmark', default='', type=str, help='Path to benchmarking setup (pickle file)')
-    parser.add_argument('--benchmark_idx', default=0, type=int, help='Index of benchmark test')
 
     # Debugging:
     parser.add_argument('--dryrun', action='store_true')

@@ -10,37 +10,14 @@ from .mobilenet import MobileNetV2
 from .vgg import VGG
 
 
-def get_model(model_name, dataset_name, pretrained=False, feature_extractor=False):
+def get_model(model_name, dataset_name, pretrained=False):
     """Retrieve an appropriate architecture."""
     if 'CIFAR' in dataset_name or 'MNIST' in dataset_name:
         if pretrained:
             raise ValueError('Loading pretrained models is only supported for ImageNet.')
         in_channels = 1 if dataset_name == 'MNIST' else 3
         num_classes = 10 if dataset_name in ['CIFAR10', 'MNIST', 'CIFAR_resized', 'CIFAR_load'] else 100
-        if dataset_name == 'CIFAR_resized':
-            model = getattr(torchvision.models, model_name.lower())(pretrained=feature_extractor)
-            '''
-            if feature_extractor:
-                for param in model.parameters():
-                    param.requires_grad = False
-            '''
-            num_ftrs = model.fc.in_features
-            model.fc = torch.nn.Linear(num_ftrs, 10)
-            #layer_cake = list(getattr(torchvision.models, model_name.lower())(pretrained=feature_extractor).children())
-            #feat_extractor = torch.nn.Sequential(*(layer_cake[:-1]), torch.nn.Flatten())
-            #model = torch.nn.Sequential(feat_extractor, torch.nn.Linear(512,num_classes))
-            '''
-            elif dataset_name == 'CIFAR_load':
-                model = getattr(torchvision.models, model_name.lower())(pretrained=False)
-                num_ftrs = model.fc.in_features
-                model.fc = torch.nn.Linear(num_ftrs, 10)
-            '''
-        elif 'resize' in model_name:
-            model = getattr(torchvision.models, model_name.split('_')[0].lower())(pretrained=feature_extractor)
-            num_ftrs = model.fc.in_features
-            model.fc = torch.nn.Linear(num_ftrs, 10)
-            model = torch.nn.Sequential(torch.nn.Upsample([224,224]), model)
-        elif 'ResNet' in model_name:
+        if 'ResNet' in model_name:
             model = resnet_picker(model_name, dataset_name)
         elif 'efficientnet-b' in model_name.lower():
             from efficientnet_pytorch import EfficientNet

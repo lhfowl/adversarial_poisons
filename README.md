@@ -4,6 +4,7 @@ This framework implements the data poisoning method found in the paper [**Advers
 
 
 We use and adapt code from the publicly available [Witches' Brew](https://github.com/JonasGeiping/poisoning-gradient-matching.git) (Geiping et al.) github repository.
+**Update**: (Sept 10 2021) The new version of the code cleans up the previous version, as well as shifting to a completely third party evaluation routine (see README in poison_evaluation).
 
 
 ### Dependencies:
@@ -25,13 +26,18 @@ which we adapted (see above).
 
 #### Generation
 To poison CIFAR-10 with our most powerful attack (class targeted), for a ResNet-18 with epsilon bound 8, use
-```python anneal.py --net ResNet18 --recipe targeted --eps 8 --budget 1.0 --target_criterion reverse_xent --save poison_dataset_batched --poison_path /path/to/save/poisons --attackoptim PGD```     
 
-* Note 1: this will generate poisons according to a simple label permutation found in ```poison_generation/shop/forgemaster_targeted.py``` defined in the ```_label_map``` method. One can easily modify this to any permutation on the label space.
+```python anneal.py --net ResNet18 --recipe targeted --eps 8 --budget 1.0 --save poison_dataset --poison_path /path/to/save/your/poisons --attackoptim PGD```     
+
+* Note 1: this will generate poisons according to a simple label permutation found in ```village/shop/forgemaster_targeted.py``` defined in the ```_label_map``` method. One can easily modify this to any permutation on the label space.
 
 * Note 2: this could take several hours depending on the GPU used. To decrease the time, use the flag ```--restarts 1```. This will decrease the time required to craft the poisons, but also potentially decrease the potency of the poisons.
 
-Generating poisons with untargeted attacks is more brittle, and the success of the generated poisons vary depending on the poison initialization much more than the targeted attacks. Because generating multiple sets of poisons can take a longer time, we have included an anonymous google drive link to one of our best untargeted dataset for CIFAR-10. This can be evaluated in the same way as the poisons generated with the above command, simply download the zip file from [here](https://drive.google.com/drive/folders/1dPvKzJWImoGZvBnRPqAx_3oa0EntKnhy?usp=sharing) and extract the data.
+Generating poisons with untargeted attacks is more brittle, and the success of the generated poisons vary depending on the poison initialization much more than the targeted attacks. Because generating multiple sets of poisons can take a longer time, we have included an anonymous google drive link to one of our best untargeted dataset for CIFAR-10. This can be evaluated in the same way as the poisons generated with the above command, simply download the zip file from [here](https://drive.google.com/drive/folders/1dPvKzJWImoGZvBnRPqAx_3oa0EntKnhy?usp=sharing) and extract the data. 
+
+If you would like to generate your own copy, we have had success generating using the following model/poison seed:
+
+```python anneal.py --net ResNet18 --recipe untargeted --eps 8 --budget 1.0 --save poison_dataset --poison_path /path/to/save/your/poisons --attackoptim PGD  --poisonkey 3 --modelkey 1 ```
 
 
 #### Evaluation

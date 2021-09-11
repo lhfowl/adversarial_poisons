@@ -72,16 +72,6 @@ class _Forgemaster():
     def _initialize_forge(self, client, furnace):
         """Implement common initialization operations for forgeing."""
         client.eval(dropout=True)
-        # Compute target gradients
-        if self.args.target_criterion in ['reverse_xent', 'cw']:
-            if len(furnace.targetset) > 0:
-                self.target_grad, self.target_gnorm = client.batched_gradient(furnace, self.setup, reverse_xent_avg)
-            else:
-                self.target_grad, self.target_gnorm = [], []
-        else:
-            raise ValueError('Invalid target criterion chosen ...')
-        print(f'Target Grad Norm is {self.target_gnorm}')
-
         # The PGD tau that will actually be used:
         # This is not super-relevant for the adam variants
         # but the PGD variants are especially sensitive
@@ -89,8 +79,7 @@ class _Forgemaster():
         if self.args.attackoptim in ['PGD', 'GD']:
             # Rule 1
             #self.tau0 = self.args.eps / 255 / furnace.ds * self.args.tau * (self.args.pbatch / 512) / self.args.ensemble
-            self.tau0 = self.args.eps / 255 / furnace.ds * self.args.tau 
-            #self.tau0 = self.args.tau / 255
+            self.tau0 = self.args.eps / 255 / furnace.ds * self.args.tau
         elif self.args.attackoptim in ['momSGD', 'momPGD']:
             # Rule 1a
             self.tau0 = self.args.eps / 255 / furnace.ds * self.args.tau * (self.args.pbatch / 512) / self.args.ensemble
@@ -98,9 +87,6 @@ class _Forgemaster():
         else:
             # Rule 2
             self.tau0 = self.args.tau * (self.args.pbatch / 512) / self.args.ensemble
-
-        # hacky
-        self.targets = []
 
 
 
@@ -191,15 +177,7 @@ class _Forgemaster():
         labels = labels.to(dtype=torch.long, device=self.setup['device'], non_blocking=NON_BLOCKING)
 
         # Add adversarial pattern
-        poison_slices, batch_positions, target_grads, target_gnorms = [], [], [], []
-        target_grad, target_gnorm = [], []
-        if 'dataset' in self.args.recipe:
-            target_grad = self.target_grad
-            target_gnorm = self.target_gnorm
-        elif self.args.recipe == 'grad_explosion':
-            target_grad, target_gnorm = [], []
-
-        #target_grad, target_gnorm = client.gradient(inputs, labels, reverse_xent)
+        poison_slices, batch_positions = [], []
         for batch_id, image_id in enumerate(ids.tolist()):
             lookup = furnace.poison_lookup.get(image_id)
             if lookup is not None:
@@ -221,11 +199,8 @@ class _Forgemaster():
                 inputs = furnace.augment(inputs, randgen=None)
 
             # Define the loss objective and compute gradients
-            closure = self._define_objective(inputs, labels, self.targets)
-            #loss, prediction = client.compute(closure, self.target_grad, self.target_clean_grad,
-            #                                  self.target_gnorm)
-            loss, prediction = client.compute(closure, target_grad,
-                                              target_gnorm)
+            closure = self._define_objective(inputs, labels)
+            loss, prediction = client.compute(closure)
             delta_slice = client.sync_gradients(delta_slice)
 
             if self.args.clean_grad:

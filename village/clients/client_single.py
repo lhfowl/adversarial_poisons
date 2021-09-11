@@ -40,7 +40,7 @@ class _ClientSingle(_ClientBase):
 
     """ METHODS FOR (CLEAN) TRAINING AND TESTING OF BREWED POISONS"""
 
-    def _iterate(self, kettle, poison_delta, max_epoch=None):
+    def _iterate(self, furnace, poison_delta, max_epoch=None):
         """Validate a given poison by training the model and checking target accuracy."""
         stats = defaultdict(list)
 
@@ -52,12 +52,12 @@ class _ClientSingle(_ClientBase):
 
         single_setup = (self.model, self.defs, self.criterion, self.optimizer, self.scheduler)
         for self.epoch in range(max_epoch):
-            self._step(kettle, poison_delta, loss_fn, self.epoch, stats, *single_setup)
+            self._step(furnace, poison_delta, loss_fn, self.epoch, stats, *single_setup)
             if self.args.dryrun:
                 break
         return stats
 
-    def step(self, kettle, poison_delta, poison_targets, true_classes):
+    def step(self, furnace, poison_delta, poison_targets, true_classes):
         """Step through a model epoch. Optionally: minimize target loss."""
         stats = defaultdict(list)
 
@@ -72,7 +72,7 @@ class _ClientSingle(_ClientBase):
             return normal_loss + self.args.adversarial * target_loss
 
         single_setup = (self.model, self.criterion, self.optimizer, self.scheduler)
-        self._step(kettle, poison_delta, loss_fn, self.epoch, stats, *single_setup)
+        self._step(furnace, poison_delta, loss_fn, self.epoch, stats, *single_setup)
         self.epoch += 1
         if self.epoch > self.defs.epochs:
             self.epoch = 0
@@ -101,48 +101,11 @@ class _ClientSingle(_ClientBase):
 
     def gradient(self, images, labels, criterion=None, batched=False):
         """Compute the gradient of criterion(model) w.r.t to given data."""
-        if not batched:
-            if criterion is None:
-                loss = self.criterion(self.model(images), labels)
-            else:
-                loss = criterion(self.model(images), labels)
-            gradients = torch.autograd.grad(loss, self.model.parameters(), only_inputs=True)
+        if criterion is None:
+            loss = self.criterion(self.model(images), labels)
         else:
-            for i in range(int(len(images)/100)):
-                print(f'Iteration of calculating poison grad: {i}')
-                loss = criterion(self.model(images[i*100:(i+1)*100]), labels[i*100:(i+1)*100])
-                #temp_gradients.append(torch.autograd.grad(loss, self.model.parameters(), only_inputs=True)
-                temp_gradient = torch.autograd.grad(loss, self.model.parameters(), only_inputs=True)
-                if i == 0:
-                    gradients = list(temp_gradient)
-                else:
-                    for j in range(len(gradients)):
-                        gradients[j] += temp_gradient[j]
-                        if i == int(len(images)/100) - 1:
-                            gradients[j] /= int(len(images)/100)
-
-    def batched_gradient(self, kettle, setup, criterion):
-        targetloader = torch.utils.data.DataLoader(kettle.targetset, batch_size=min(kettle.batch_size, len(kettle.targetset)),
-                                                       shuffle=False, drop_last=False)
-
-        for idx, (inputs, targets, _) in enumerate(targetloader):
-            inputs = inputs.to(**setup)
-            targets = targets.to(device=self.setup['device'], dtype=torch.long)
-            loss = criterion(self.model(inputs), targets)
-            temp_gradient = torch.autograd.grad(loss, self.model.parameters(), only_inputs=True)
-            if idx == 0:
-                gradients = list(temp_gradient)
-            else:
-                for j in range(len(gradients)):
-                    gradients[j] += temp_gradient[j]
-                    if idx == len(targetloader) - 1:
-                        gradients[j] /= len(targetloader)
-
-        grad_norm = 0
-        for grad in gradients:
-            grad_norm += grad.detach().pow(2).sum()
-        grad_norm = grad_norm.sqrt()
-        return gradients, grad_norm
+            loss = criterion(self.model(images), labels)
+        gradients = torch.autograd.grad(loss, self.model.parameters(), only_inputs=True)
 
     def compute(self, function, *args):
         r"""Compute function on the given optimization problem, defined by criterion \circ model.

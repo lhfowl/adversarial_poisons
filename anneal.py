@@ -32,12 +32,8 @@ if __name__ == "__main__":
         stats_clean = model.train(materials, max_epoch=args.max_epoch)
     train_time = time.time()
 
-    if args.skip_brew:
-        poison_delta = None
-        forge_time = time.time()
-    else:
-        poison_delta = forgemaster.forge(model, materials)
-        forge_time = time.time()
+    poison_delta = forgemaster.forge(model, materials)
+    forge_time = time.time()
 
     # Export
     if args.save is not None:

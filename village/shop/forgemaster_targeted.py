@@ -11,17 +11,15 @@ from .forgemaster_base import _Forgemaster
 
 class ForgemasterTargeted(_Forgemaster):
 
-    def _define_objective(self, inputs, labels, targets):
+    def _define_objective(self, inputs, labels):
         """Implement the closure here."""
-        def closure(model, criterion, optimizer, target_grad, target_clean_grad):
+        def closure(model, criterion, optimizer):
             """This function will be evaluated on all GPUs."""  # noqa: D401
             outputs = model(inputs)
             new_labels = self._label_map(outputs, labels)
             loss = criterion(outputs, new_labels)
             loss.backward(retain_graph=self.retain)
             prediction = (outputs.data.argmax(dim=1) == new_labels).sum()
-            #max_class = outputs.data.argmax(dim=1)
-            #softmax = torch.nn.functional.softmax(outputs, dim=1)[torch.arange(len(labels)), max_class]
             return loss.detach().cpu(), prediction.detach().cpu()
         return closure
 

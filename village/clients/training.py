@@ -39,7 +39,7 @@ def get_optimizers(model, args, defs):
     return optimizer, scheduler
 
 
-def run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion, optimizer, scheduler, ablation=True):
+def run_step(furnace, poison_delta, loss_fn, epoch, stats, model, defs, criterion, optimizer, scheduler, ablation=True):
 
     epoch_loss, total_preds, correct_preds = 0, 0, 0
     if DEBUG_TRAINING:
@@ -56,25 +56,16 @@ def run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion
 
         data_timer_start.record()
 
-    if kettle.args.ablation < 1.0:
-        # run ablation on a subset of the training set
-        loader = kettle.partialloader
-    else:
-        loader = kettle.trainloader
+    loader = furnace.trainloader
 
     for batch, (inputs, labels, ids) in enumerate(loader):
         # Prep Mini-Batch
         model.train()
-        '''
-        if not next(model.parameters())[1].requires_grad:
-            model.eval()
-            model.module.fc.requires_grad = True
-        '''
         optimizer.zero_grad()
 
         # Transfer to GPU
-        inputs = inputs.to(**kettle.setup)
-        labels = labels.to(dtype=torch.long, device=kettle.setup['device'], non_blocking=NON_BLOCKING)
+        inputs = inputs.to(**furnace.setup)
+        labels = labels.to(dtype=torch.long, device=furnace.setup['device'], non_blocking=NON_BLOCKING)
 
         if DEBUG_TRAINING:
             data_timer_end.record()
@@ -84,25 +75,25 @@ def run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion
         if poison_delta is not None:
             poison_slices, batch_positions = [], []
             for batch_id, image_id in enumerate(ids.tolist()):
-                lookup = kettle.poison_lookup.get(image_id)
+                lookup = furnace.poison_lookup.get(image_id)
                 if lookup is not None:
                     poison_slices.append(lookup)
                     batch_positions.append(batch_id)
             # Python 3.8:
-            # twins = [(b, l) for b, i in enumerate(ids.tolist()) if l:= kettle.poison_lookup.get(i)]
+            # twins = [(b, l) for b, i in enumerate(ids.tolist()) if l:= furnace.poison_lookup.get(i)]
             # poison_slices, batch_positions = zip(*twins)
 
             if batch_positions:
-                inputs[batch_positions] += poison_delta[poison_slices].to(**kettle.setup)
+                inputs[batch_positions] += poison_delta[poison_slices].to(**furnace.setup)
 
         # Add data augmentation
         if defs.augmentations:  # defs.augmentations is actually a string, but it is False if --noaugment
-            inputs = kettle.augment(inputs)
+            inputs = furnace.augment(inputs)
 
         # Does adversarial training help against poisoning?
         for _ in range(defs.adversarial_steps):
-            inputs = pgd_step(inputs, labels, model, loss_fn, kettle.dm, kettle.ds,
-                              eps=kettle.args.eps, tau=kettle.args.tau)
+            inputs = pgd_step(inputs, labels, model, loss_fn, furnace.dm, furnace.ds,
+                              eps=furnace.args.eps, tau=furnace.args.tau)
 
         # Get loss
         outputs = model(inputs)
@@ -122,8 +113,8 @@ def run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion
             if defs.privacy['clip'] is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), defs.privacy['clip'])
             if defs.privacy['noise'] is not None:
-                # generator = torch.distributions.laplace.Laplace(torch.as_tensor(0.0).to(**kettle.setup),
-                #                                                 kettle.defs.privacy['noise'])
+                # generator = torch.distributions.laplace.Laplace(torch.as_tensor(0.0).to(**furnace.setup),
+                #                                                 furnace.defs.privacy['noise'])
                 for param in model.parameters():
                     # param.grad += generator.sample(param.shape)
                     noise_sample = torch.randn_like(param) * defs.privacy['clip'] * defs.privacy['noise']
@@ -148,17 +139,13 @@ def run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion
 
         if defs.scheduler == 'cyclic':
             scheduler.step()
-        if kettle.args.dryrun:
+        if furnace.args.dryrun:
             break
     if defs.scheduler == 'linear':
         scheduler.step()
 
     if epoch % defs.validate == 0 or epoch == (defs.epochs - 1):
-        valid_acc, valid_loss = run_validation(model, criterion, kettle.validloader, kettle.setup, kettle.args.dryrun)
-        if len(kettle.targetset) > 0 and kettle.args.target_percent < 1.0:
-            seen_acc, seen_loss = run_validation_seen(model, criterion, kettle.seenloader, kettle.setup, kettle.args.dryrun)
-            unseen_acc, unseen_loss = run_validation_unseen(model, criterion, kettle.unseenloader, kettle.setup, kettle.args.dryrun)
-            print(f'Accuracy on seen validation images: {seen_acc}, unseen validation images: {unseen_acc}')
+        valid_acc, valid_loss = run_validation(model, criterion, furnace.validloader, furnace.setup, furnace.args.dryrun)
     else:
         valid_acc, valid_loss = None, None
         target_acc, target_loss, target_clean_acc, target_clean_loss = [None] * 4
@@ -178,52 +165,6 @@ def run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion
 
 
 def run_validation(model, criterion, dataloader, setup, dryrun=False):
-    """Get accuracy of model relative to dataloader."""
-    model.eval()
-    correct = 0
-    total = 0
-    loss = 0
-    with torch.no_grad():
-        for i, (inputs, targets, _) in enumerate(dataloader):
-            inputs = inputs.to(**setup)
-            targets = targets.to(device=setup['device'], dtype=torch.long, non_blocking=NON_BLOCKING)
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            loss += criterion(outputs, targets).item()
-            total += targets.size(0)
-            correct += (predicted == targets).sum().item()
-            if dryrun:
-                break
-
-    accuracy = correct / total
-    loss_avg = loss / (i + 1)
-    return accuracy, loss_avg
-
-
-def run_validation_seen(model, criterion, dataloader, setup, dryrun=False):
-    """Get accuracy of model relative to dataloader."""
-    model.eval()
-    correct = 0
-    total = 0
-    loss = 0
-    with torch.no_grad():
-        for i, (inputs, targets, _) in enumerate(dataloader):
-            inputs = inputs.to(**setup)
-            targets = targets.to(device=setup['device'], dtype=torch.long, non_blocking=NON_BLOCKING)
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            loss += criterion(outputs, targets).item()
-            total += targets.size(0)
-            correct += (predicted == targets).sum().item()
-            if dryrun:
-                break
-
-    accuracy = correct / total
-    loss_avg = loss / (i + 1)
-    return accuracy, loss_avg
-
-
-def run_validation_unseen(model, criterion, dataloader, setup, dryrun=False):
     """Get accuracy of model relative to dataloader."""
     model.eval()
     correct = 0

@@ -47,7 +47,7 @@ class _ClientBase:
         if self.args.ensemble > 1:
             self.initialize()
         else:
-            self.initialize(feature_extractor=self.args.feat_extractor_crafting)
+            self.initialize()
 
     def gradient(self, images, labels):
         """Compute the gradient of criterion(model) w.r.t to given data."""
@@ -82,7 +82,7 @@ class _ClientBase:
 
     """ METHODS FOR (CLEAN) TRAINING AND TESTING OF BREWED POISONS"""
 
-    def train(self, kettle, max_epoch=None):
+    def train(self, furnace, max_epoch=None):
         """Clean (pre)-training of the chosen model, no poisoning involved."""
         print('Starting clean training ...')
         '''
@@ -90,39 +90,23 @@ class _ClientBase:
             defs = training_strategy(self.args.net[0], self.args)
             self.optimizer = torch.optim.SGD(self.model.fc.parameters(), lr=0.001, momentum=0.9)
         '''
-        return self._iterate(kettle, poison_delta=None, max_epoch=max_epoch)
-
-    def retrain(self, kettle, poison_delta):
-        """Check poison on the initialization it was brewed on."""
-        self.initialize(seed=self.model_init_seed)
-        print('Model re-initialized to initial seed.')
-        return self._iterate(kettle, poison_delta=poison_delta)
-
-    def validate(self, kettle, poison_delta):
-        """Check poison on a new initialization(s)."""
-        run_stats = list()
-        for runs in range(self.args.vruns):
-            self.initialize()
-            print('Model reinitialized to random seed.')
-            run_stats.append(self._iterate(kettle, poison_delta=poison_delta))
-
-        return average_dicts(run_stats)
+        return self._iterate(furnace, poison_delta=None, max_epoch=max_epoch)
 
     def eval(self, dropout=True):
         """Switch everything into evaluation mode."""
         raise NotImplementedError()
 
-    def _iterate(self, kettle, poison_delta):
+    def _iterate(self, furnace, poison_delta):
         """Validate a given poison by training the model and checking target accuracy."""
         raise NotImplementedError()
 
-    def _adversarial_step(self, kettle, poison_delta, step, poison_targets, true_classes):
+    def _adversarial_step(self, furnace, poison_delta, step, poison_targets, true_classes):
         """Step through a model epoch to in turn minimize target loss."""
         raise NotImplementedError()
 
     def _initialize_model(self, model_name, feature_extractor=False):
 
-        model = get_model(model_name, self.args.dataset, pretrained=self.args.pretrained, feature_extractor=feature_extractor)
+        model = get_model(model_name, self.args.dataset, pretrained=self.args.pretrained)
         # Define training routine
         defs = training_strategy(model_name, self.args)
         criterion = torch.nn.CrossEntropyLoss()
@@ -131,6 +115,6 @@ class _ClientBase:
         return model, defs, criterion, optimizer, scheduler
 
 
-    def _step(self, kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion, optimizer, scheduler):
+    def _step(self, furnace, poison_delta, loss_fn, epoch, stats, model, defs, criterion, optimizer, scheduler):
         """Single epoch. Can't say I'm a fan of this interface, but ..."""
-        run_step(kettle, poison_delta, loss_fn, epoch, stats, model, defs, criterion, optimizer, scheduler)
+        run_step(furnace, poison_delta, loss_fn, epoch, stats, model, defs, criterion, optimizer, scheduler)

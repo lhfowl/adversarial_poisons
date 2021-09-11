@@ -8,11 +8,9 @@ import sys
 import time
 import math
 
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.nn.init as init
-from consts import *
+
 
 def get_mean_and_std(dataset):
     '''Compute the mean and std value of dataset.'''
@@ -44,65 +42,83 @@ def init_params(net):
                 init.constant(m.bias, 0)
 
 
-def get_loss_function(args):
-    if args.criterion == '':
-        criterion = nn.CrossEntropyLoss()
-    elif 'kl' in args.criterion:
-        def kl_loss(outputs, targets):
-            return torch.nn.functional.kl_div(F.log_softmax(outputs, dim=1),F.softmax(targets, dim=1))
-        criterion = kl_loss
+_, term_width = os.popen('stty size', 'r').read().split()
+term_width = int(term_width)
 
-    return criterion
+TOTAL_BAR_LENGTH = 65.
+last_time = time.time()
+begin_time = last_time
+def progress_bar(current, total, msg=None):
+    global last_time, begin_time
+    if current == 0:
+        begin_time = time.time()  # Reset for new bar.
 
+    cur_len = int(TOTAL_BAR_LENGTH*current/total)
+    rest_len = int(TOTAL_BAR_LENGTH - cur_len) - 1
 
-def get_scheduler(args, optimizer):
-    if args.scheduler == 'cosine':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
-    elif args.scheduler == 'linear':
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                      milestones=[args.epochs // 2.667, args.epochs // 1.6, args.epochs // 1.142], gamma=0.1)
-    return scheduler
+    sys.stdout.write(' [')
+    for i in range(cur_len):
+        sys.stdout.write('=')
+    sys.stdout.write('>')
+    for i in range(rest_len):
+        sys.stdout.write('.')
+    sys.stdout.write(']')
 
+    cur_time = time.time()
+    step_time = cur_time - last_time
+    last_time = cur_time
+    tot_time = cur_time - begin_time
 
+    L = []
+    L.append('  Step: %s' % format_time(step_time))
+    L.append(' | Tot: %s' % format_time(tot_time))
+    if msg:
+        L.append(' | ' + msg)
 
-class AttackPGD(nn.Module):
-    def __init__(self, basic_net, args):
-        super(AttackPGD, self).__init__()
-        dm, ds = get_stats(args)
-        dm, ds = dm.to('cuda'), ds.to('cuda')
-        config = {
-            'epsilon': 8.0/255.0,
-            'num_steps': 10,
-            'step_size': 2.0/255.0,
-            'dm': dm,
-            'ds': ds
-        }
-        self.config = config
-        self.basic_net = basic_net
-        self.step_size = config['step_size']
-        self.epsilon = config['epsilon']
-        self.num_steps = config['num_steps']
+    msg = ''.join(L)
+    sys.stdout.write(msg)
+    for i in range(term_width-int(TOTAL_BAR_LENGTH)-len(msg)-3):
+        sys.stdout.write(' ')
 
-    def forward(self, inputs, targets):
-        if self.epsilon == 0:
-            return self.basic_net(inputs)
-        else:
-            x = inputs.detach()
-            x = x + torch.zeros_like(x).uniform_(-self.epsilon, self.epsilon) / self.config['ds']
-            for i in range(self.num_steps):
-                x.requires_grad_()
-                with torch.enable_grad():
-                    loss = F.cross_entropy(self.basic_net(x), targets, reduction='sum')
-                grad = torch.autograd.grad(loss, [x])[0]
-                x = x.detach() + self.step_size / self.config['ds'] * torch.sign(grad.detach())
-                x = torch.min(torch.max(x, inputs - self.epsilon / self.config['ds']), inputs + self.epsilon / self.config['ds'])
-                x = torch.max(torch.min(x, (1 - self.config['dm']) / self.config['ds']), -self.config['dm'] / self.config['ds'])
-            return self.basic_net(x)
+    # Go back to the center of the bar.
+    for i in range(term_width-int(TOTAL_BAR_LENGTH/2)+2):
+        sys.stdout.write('\b')
+    sys.stdout.write(' %d/%d ' % (current+1, total))
 
-def get_stats(args):
-    if args.baseset == 'CIFAR10':
-        dm = torch.tensor(cifar10_mean)[None, :, None, None]
-        ds = torch.tensor(cifar10_std)[None, :, None, None]
-        return dm, ds
+    if current < total-1:
+        sys.stdout.write('\r')
     else:
-        raise NotImplementedError
+        sys.stdout.write('\n')
+    sys.stdout.flush()
+
+def format_time(seconds):
+    days = int(seconds / 3600/24)
+    seconds = seconds - days*3600*24
+    hours = int(seconds / 3600)
+    seconds = seconds - hours*3600
+    minutes = int(seconds / 60)
+    seconds = seconds - minutes*60
+    secondsf = int(seconds)
+    seconds = seconds - secondsf
+    millis = int(seconds*1000)
+
+    f = ''
+    i = 1
+    if days > 0:
+        f += str(days) + 'D'
+        i += 1
+    if hours > 0 and i <= 2:
+        f += str(hours) + 'h'
+        i += 1
+    if minutes > 0 and i <= 2:
+        f += str(minutes) + 'm'
+        i += 1
+    if secondsf > 0 and i <= 2:
+        f += str(secondsf) + 's'
+        i += 1
+    if millis > 0 and i <= 2:
+        f += str(millis) + 'ms'
+        i += 1
+    if f == '':
+        f = '0ms'
+    return f
